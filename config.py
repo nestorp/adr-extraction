@@ -1,5 +1,5 @@
 CONFIG = {
-"datafile" : "data/full_tweets_adronly.csv",
+"datafile" : "full_tweets_adronly.csv",
 "sentence_len" : 280,
 "top_words" : 20000,
 "word2vecpath" : "C:/Users/np278/w2v_embeddings/word2vec_twitter_model.bin",

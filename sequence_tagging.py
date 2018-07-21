@@ -32,6 +32,7 @@ from keras.callbacks import ModelCheckpoint
 from keras.callbacks import EarlyStopping
 from custom_metrics import evaluate_approx_match
 from sklearn.model_selection import KFold 
+import datetime
 
 argparser = ArgumentParser()
 
@@ -80,6 +81,9 @@ argparser.add_argument("--show_samples", dest="show_samples", default=CONFIG['sh
 
 args = argparser.parse_args()
 
+args.log_name = "logs/kfold/"+args.log_name+".txt"
+args.datafile = "data/"+args.datafile
+
 rand_embed = int(args.rand_embed)!=0
 train_embed = int(args.train_embed)!=0
 load_weights = int(args.load_weights)!=0
@@ -89,6 +93,7 @@ data = pd.read_csv(args.datafile, sep="|", encoding="utf-8")
 
 norm_text_lit = []
 labels_lit = []
+pos_lit = []
 
 stop_words = set(stopwords.words('english'))
 
@@ -118,6 +123,7 @@ for x in range(len(data)):
             print(x,iobs)
         norm_text_lit.append(data.words[x].split("~"))
         labels_lit.append(iobs)
+        pos_lit.append(data.words[x].split("~"))
     except Exception as e:
         print(x, e)
         continue
@@ -138,9 +144,9 @@ all_labels = list(set(np.concatenate(labels_lit)))
 all_labels_full = list(np.concatenate(labels_lit))
 
 labels_df = pd.DataFrame(all_labels_full)
-print(labels_df[labels_df[0]=="O"].count())
-print(labels_df[labels_df[0]=="I-ADR"].count())
-print(labels_df[labels_df[0]=="I-IND"].count())
+#print(labels_df[labels_df[0]=="O"].count())
+#print(labels_df[labels_df[0]=="I-ADR"].count())
+#print(labels_df[labels_df[0]=="I-IND"].count())
     
 
 word_index = {w: i+1 for i, w in enumerate(all_words)}
@@ -154,7 +160,7 @@ tag_index = {t: i for i, t in enumerate(all_labels)}
 #tag_index = {"O":0, "I-ADR": 1, "<PAD>":2}
 #tag_index = {'O': 0, 'M': 1, 'I-ADR': 2,  'I-IND': 3, '<PAD>': 4}
 
-print(tag_index)
+#print(tag_index)
 
 top_words = args.top_words
 num_words = len(word_index)
@@ -229,6 +235,8 @@ print("Begin cross validation")
 kf = KFold(n_splits=5, shuffle=True, random_state=args.seed)
 k = 0
 
+with open(args.log_name, 'w', encoding='UTF-8') as writer:
+    writer.write("timestamp|k|n|prec_a|rec_a|f1_a|val_loss|val_acc|train_loss|train_acc\n") 
 
 for train_index, test_index in kf.split(X): 
     k+=1
@@ -319,6 +327,14 @@ for train_index, test_index in kf.split(X):
     targ = np.argmax(targ, axis=-1) 
 
     k_scores = evaluate_approx_match(y_pred, targ, all_labels)
+    k_metrics_val = model.evaluate(X_test, y_test)
+    k_metrics_train = model.evaluate(X_train, y_train)
+    
+    timestamp = str(datetime.datetime.now())
+    
+    with open(args.log_name, 'a', encoding='UTF-8') as writer:
+        writer.write(timestamp + "|" + str(k)+ "|" + str(len(X_train)) + "|" + str(k_scores["p"])+ "|" + str(k_scores["r"])+ "|" + str(k_scores["f1"]) 
+                        + "|" + str(k_metrics_val[0]) + "|" + str(k_metrics_val[1]) + "|" + str(k_metrics_train[0]) + "|" + str(k_metrics_train[1]) + "\n") 
 
     print("Best Scores for K-{}: Precision = {}, Recall = {}, F1 = {}".format(str(k), k_scores["p"], k_scores["r"],  k_scores["f1"]))
 

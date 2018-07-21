@@ -201,7 +201,7 @@ if rand_embed:
     word_vectors_dim = 400
 
 #Add the embedding layer	
-model = Embedding(input_dim = num_words, output_dim = word_vectors_dim, input_length=max_review_length, weights = [embedding_matrix], trainable=train_embed, mask_zero=True)(input)
+model = Embedding(input_dim = num_words, output_dim = word_vectors_dim, input_length=max_review_length, weights = embedding_matrix, trainable=train_embed, mask_zero=True)(input)
 
 #model = Masking(mask_value=0.0)(model)
 

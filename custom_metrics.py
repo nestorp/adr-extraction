@@ -193,11 +193,11 @@ class Metrics_Approx(keras.callbacks.Callback):
             self.save_model_weights()
         if epoch>0:
             if self.scores[epoch]["f1"] > self.scores[self.best_epoch]["f1"]:
-                print("Epoch {}: F1 improved from {} to {}, saving model to {}".format(epoch+1, self.scores[epoch-1]["f1"], self.scores[epoch]["f1"], self.weights_filepath))
+                print("Epoch {}: F1 improved from {} to {}, saving model to {}".format(epoch+1, self.scores[self.best_epoch]["f1"], self.scores[epoch]["f1"], self.weights_filepath))
                 self.best_epoch = epoch
                 self.save_model_weights()
             else:
-                print("Epoch {}: F1 did not improve from {}".format(epoch+1, self.scores[epoch-1]["f1"], self.scores[epoch]["f1"], self.weights_filepath))
+                print("Epoch {}: F1 did not improve from {}".format(epoch+1, self.scores[self.best_epoch]["f1"], self.scores[epoch]["f1"], self.weights_filepath))
             
             if self.scores[epoch]["f1"] > self.scores[epoch-1]["f1"]:
                 self.no_improv_epoch = 0
@@ -217,7 +217,7 @@ class Metrics_Approx(keras.callbacks.Callback):
         
         self.log_filename = filename
         
-        with open(self.log_filename, 'a', encoding='UTF-8') as writer:
+        with open(self.log_filename, 'w', encoding='UTF-8') as writer:
             writer.write("timestamp|epoch|prec_e|rec_e|f1_e|prec_a|rec_a|f1_a\n")
         
         return
@@ -233,7 +233,7 @@ class Metrics(keras.callbacks.Callback):
 
     def on_epoch_end(self, epoch, logs={}):
     
-        timestamp = datetime.datetime.now()
+        timestamp = str(datetime.datetime.now())
         timestamp_str = timestamp.replace(" ","").replace(":","").replace(".","").replace("-","")
            
         predict = np.asarray(self.model.predict(self.validation_data[0]))
@@ -249,7 +249,7 @@ class Metrics(keras.callbacks.Callback):
         recall_e=recall_score(targ, predict, average="weighted")
         f1_e=f1_score(targ, predict, average="weighted")
         
-        with open('logs/e_metrics.txt', 'a', encoding='UTF-8') as writer:
+        with open(self.log_filename, 'a', encoding='UTF-8') as writer:
             writer.write(timestamp + "|" + str(epoch) + "|" + str(precision_e) + "|" + str(recall_e) + "|" + str(f1_e) + "\n")
             #writer.write(str(approx_scores["p"]) + "|" + str(approx_scores["r"]) + "|" + str(approx_scores["f1"]) + "\n")
 
@@ -262,7 +262,7 @@ class Metrics(keras.callbacks.Callback):
         timestamp = str(datetime.datetime.now())
         timestamp_str = timestamp.replace(" ","").replace(":","").replace(".","").replace("-","")
         
-        filename = "logs/a_metrics_" + timestamp_str + ".txt"
+        filename = "logs/e_metrics_" + timestamp_str + ".txt"
         
         self.log_filename = filename
         
