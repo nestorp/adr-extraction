@@ -1,5 +1,5 @@
 CONFIG = {
-"datafile" : "seq_labeling/reddit_final_fixed_sample_5_tagged_adronly.csv",
+"datafile" : "data/full_tweets_adronly.csv",
 "sentence_len" : 280,
 "top_words" : 20000,
 "word2vecpath" : "C:/Users/np278/w2v_embeddings/word2vec_twitter_model.bin",
@@ -19,5 +19,6 @@ CONFIG = {
 "batch_size":1,
 "log_name" : "run1",
 "dropout_rate" : 0.1,
-"load_weights" : 0
+"load_weights" : 0,
+"show_samples" : 0
 }

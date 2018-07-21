@@ -21,7 +21,7 @@ from argparse import ArgumentParser
 import tensorflow as tf
 from gensim.models import KeyedVectors
 import pickle
-from tb_trainval_callback import TrainValTensorBoard
+from custom_tb_log import TrainValTensorBoard
 from custom_metrics import Metrics
 from custom_metrics import Metrics_Approx
 from config import CONFIG
@@ -29,6 +29,7 @@ from ast import literal_eval
 from nltk.corpus import stopwords
 import string
 from keras.callbacks import ModelCheckpoint
+from keras.callbacks import EarlyStopping
 
 
 argparser = ArgumentParser()
@@ -70,11 +71,22 @@ argparser.add_argument("--num_epochs", dest="num_epochs", default=CONFIG['num_ep
 argparser.add_argument("--batch_size", dest="batch_size", default=CONFIG['batch_size'],
                          help="Training batch size")	
 argparser.add_argument("--log_name", dest="log_name", default=CONFIG['log_name'],
-                         help="Directory name for tensorboard logs")	
+                         help="Directory name for tensorboard logs")
+argparser.add_argument("--show_samples", dest="show_samples", default=CONFIG['show_samples'],
+                         help="Determines wether to show examples model predictions")                          
 
 args = argparser.parse_args()
 
-data = pd.read_csv("seq_labeling/tweets_final_fixed_single_drug.csv", sep="|", encoding="utf-8")
+show_samples = int(args.show_samples)!=0
+print("show_samples", show_samples)
+
+rand_embed = int(args.rand_embed)!=0
+print("rand_embed", rand_embed)
+
+train_embed = int(args.train_embed)!=0
+print("train_embed", train_embed)
+
+data = pd.read_csv("data/tweets_final_fixed_single_drug.csv", sep="|", encoding="utf-8")
 
 norm_text_lit = []
 labels_lit = []
@@ -137,31 +149,33 @@ print('Shape of label tensor post-categoridation:', y.shape)
 
 print('Shape of data tensor:', X.shape)
 
-print("Loading w2v embeddings...")
-word2vecpath = args.word2vecpath
-word_vectors = KeyedVectors.load_word2vec_format(word2vecpath, binary=True, unicode_errors='replace')
+if not rand_embed:
+    print("Loading w2v embeddings...")
+    word2vecpath = args.word2vecpath
+    word_vectors = KeyedVectors.load_word2vec_format(word2vecpath, binary=True, unicode_errors='replace')
 
-print("Finished loading w2v embeddings...")
+    print("Finished loading w2v embeddings...")
 
-word_vectors_dim = len(np.asarray(word_vectors.get_vector(list(word_vectors.vocab.keys())[0]),dtype='float32'))
-print('Vector length:',word_vectors_dim)
+    word_vectors_dim = len(np.asarray(word_vectors.get_vector(list(word_vectors.vocab.keys())[0]),dtype='float32'))
+    print('Vector length:',word_vectors_dim)
 
-embeddings_index = {}
-for word in word_vectors.vocab.keys():
-    coefs = np.asarray(word_vectors.get_vector(word),dtype='float32')
-    embeddings_index[word] = coefs
-word_vectors = None
-print("Embedding index created...")
+    embeddings_index = {}
+    for word in word_vectors.vocab.keys():
+        coefs = np.asarray(word_vectors.get_vector(word),dtype='float32')
+        embeddings_index[word] = coefs
+    word_vectors = None
+    print("Embedding index created...")
 
-embedding_matrix = np.zeros((len(word_index) , word_vectors_dim))
-for word, i in word_index.items():
-    embedding_vector = embeddings_index.get(word)
-    if embedding_vector is not None:
-        embedding_matrix[i] = embedding_vector
-			
-	#pickle.dump(embedding_matrix, open("w2v_embedding_matrix_goog_3", 'wb'))
+    embedding_matrix = np.zeros((len(word_index) , word_vectors_dim))
+    for word, i in word_index.items():
+        embedding_vector = embeddings_index.get(word)
+        if embedding_vector is not None:
+            embedding_matrix[i] = embedding_vector
+                
+        #pickle.dump(embedding_matrix, open("w2v_embedding_matrix_goog_3", 'wb'))
 	
-print("Embedding matrix created...")
+    embedding_matrix=[embedding_matrix]
+    print("Embedding matrix created...")
 
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.1, random_state=args.seed)
 
@@ -181,8 +195,13 @@ else:
 print("Creating Model...")
 input = Input(shape=(max_review_length,))
 
+if rand_embed:
+    print("Random embeddings")
+    embedding_matrix = None
+    word_vectors_dim = 400
+
 #Add the embedding layer	
-model = Embedding(input_dim = num_words, output_dim = word_vectors_dim, input_length=max_review_length, weights = [embedding_matrix], trainable=args.train_embed, mask_zero=True)(input)
+model = Embedding(input_dim = num_words, output_dim = word_vectors_dim, input_length=max_review_length, weights = [embedding_matrix], trainable=train_embed, mask_zero=True)(input)
 
 #model = Masking(mask_value=0.0)(model)
 
@@ -237,19 +256,21 @@ else:
 class_weight = args.class_weights
 
 
-filepath="weights.best.hdf5"
-checkpoint = ModelCheckpoint(filepath, monitor='val_acc', verbose=1, save_best_only=True, mode='max')
+filepath="temp/weights.best.hdf5"
+checkpoint = ModelCheckpoint(filepath, monitor='val_loss', verbose=1, save_best_only=True, mode='min')
+early_stop = EarlyStopping(monitor='val_loss', min_delta=0, patience=3, verbose=1, mode='min', baseline=None)
 
 
 history = model.fit(X_train, np.array(y_train), batch_size=batch_size, epochs=int(args.num_epochs), verbose=1, #class_weight={0:1, 1:10},
-					callbacks = [metrics,checkpoint],
+					callbacks = [metrics,checkpoint, early_stop],
 					validation_data=(X_test, np.array(y_test)))
                     
 model.load_weights(filepath)            
 
-np.save("bidirectional_1_weights",model.get_layer("bidirectional_1").get_weights())
+filepath="temp/bidirectional_1_weights"
+np.save(filepath,model.get_layer("bidirectional_1").get_weights())
 
-if False:
+if show_samples:
     print("{:50} ({:6}): {}".format("Sentence", "True", "Pred"))
     for i in range(10):
         p = model.predict(np.array([X_test[i]]))

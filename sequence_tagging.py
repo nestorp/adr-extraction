@@ -21,15 +21,17 @@ from argparse import ArgumentParser
 import tensorflow as tf
 from gensim.models import KeyedVectors
 import pickle
-from tb_trainval_callback import TrainValTensorBoard
+from custom_tb_log import TrainValTensorBoard
 from custom_metrics import Metrics
 from custom_metrics import Metrics_Approx
 from config import CONFIG
 from ast import literal_eval
 from nltk.corpus import stopwords
 import string
-
-
+from keras.callbacks import ModelCheckpoint
+from keras.callbacks import EarlyStopping
+from custom_metrics import evaluate_approx_match
+from sklearn.model_selection import KFold 
 
 argparser = ArgumentParser()
 
@@ -72,18 +74,16 @@ argparser.add_argument("--batch_size", dest="batch_size", default=CONFIG['batch_
 argparser.add_argument("--log_name", dest="log_name", default=CONFIG['log_name'],
                          help="Directory name for tensorboard logs")	
 argparser.add_argument("--load_weights", dest="load_weights", default=CONFIG['load_weights'],
-                         help="Determines wether to load pre-saved weights")                        
+                         help="Determines wether to load pre-saved weights")  
+argparser.add_argument("--show_samples", dest="show_samples", default=CONFIG['show_samples'],
+                         help="Determines wether to show examples model predictions")                         
 
 args = argparser.parse_args()
 
 rand_embed = int(args.rand_embed)!=0
-print("rand_embed", rand_embed)
-
 train_embed = int(args.train_embed)!=0
-print("train_embed", train_embed)
-
 load_weights = int(args.load_weights)!=0
-print("load_weights", load_weights)
+show_samples = int(args.show_samples)!=0
 
 data = pd.read_csv(args.datafile, sep="|", encoding="utf-8")
 
@@ -149,7 +149,7 @@ all_words.insert(0,"~pad~")
 
 all_labels.append("<PAD>")
 tag_index = {t: i for i, t in enumerate(all_labels)}
-pickle.dump(all_labels, open("tag_index", 'wb'))
+
 #tag_index["<PAD>"]=2
 #tag_index = {"O":0, "I-ADR": 1, "<PAD>":2}
 #tag_index = {'O': 0, 'M': 1, 'I-ADR': 2,  'I-IND': 3, '<PAD>': 4}
@@ -175,6 +175,7 @@ y = sequence.pad_sequences(y, maxlen=max_review_length, padding='post', value=ta
 
 #MULTICLASS
 y = [to_categorical(i, num_classes=num_classes) for i in y]
+y = np.array(y)
 
 print('Shape of data tensor:', X.shape)
 
@@ -217,107 +218,114 @@ if not rand_embed:
     embedding_matrix=[embedding_matrix]
     print("Embedding matrix created...")
 
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.1, random_state=args.seed)
-
-if args.max_train is not None:
-	max_train = int(args.max_train)
-	if max_train<len(X_train):
-		X_train = X_train[:max_train]
-		y_train = y_train[:max_train]
-	
-print("Size of training set = ",len(X_train))
-
 if args.optimizer.lower()=="rmsprop":
 	opt = keras.optimizers.RMSprop(lr=args.learning_rate, rho=0.9, epsilon=None, decay=0.0)
 else:
 	opt = "adam"
+   
+class_weight = args.class_weights    
 	
-print("Creating Model...")
-input = Input(shape=(max_review_length,))
-
-if rand_embed:
-    print("Random embeddings")
-    embedding_matrix = None
-    word_vectors_dim = 400
-
-#Add the embedding layer	
-model = Embedding(input_dim = num_words, output_dim = word_vectors_dim, input_length=max_review_length, weights = embedding_matrix, trainable=train_embed, mask_zero=True)(input)
-
-#model = Masking(mask_value=0.0)(model)
-
-dropout_rate = int(args.dropout_rate)
-num_hidden = int(args.num_hidden)
-
-#Add Additional hidden LSTM layers
-#if num_hidden>1:
-#	for x in range(1, num_hidden):
-		#model = Bidirectional(LSTM(int(args.hidden_dim), 
-                    #batch_input_shape=(32, None, 280), 
-         #           return_sequences = True, 
-          #          dropout =dropout_rate, activation=args.lstm_act))(model)
-
-if load_weights:    
-    print("Loading saved weights")
-    bidirectional_1_weights = np.load("bidirectional_1_weights.npy")
-else:
-    bidirectional_1_weights = None
-          
-#Add last hidden LSTM layer
-model = Bidirectional(LSTM(int(args.hidden_dim), 
-                    weights = bidirectional_1_weights,
-                    #batch_input_shape=(32, None, 280), 
-                    return_sequences = True, 
-                    dropout =dropout_rate, activation=args.lstm_act))(model)
-
-"""                   
-#Add Additional hidden LSTM layers
-if num_hidden>1:
-	for x in range(1, num_hidden):
-		model = Bidirectional(CuDNNLSTM(int(args.hidden_dim), 
-                    #batch_input_shape=(32, None, 280), 
-                    return_sequences = True))(model)
-
-#Add last hidden LSTM layer
-model = Bidirectional(CuDNNLSTM(int(args.hidden_dim), 
-                    #batch_input_shape=(32, None, 280), 
-                    return_sequences = True))(model)                
-"""
-#Add final dense layer BINARY
-#out = TimeDistributed(Dense(1, activation=args.dense_act, ))(model)
-
-#Add final dense layer MULTICLASS
-out = TimeDistributed(Dense(num_classes, activation=args.dense_act, ))(model)
-
-model = Model(input,out)
-
-#BINARY
-#model.compile(loss='binary_crossentropy', optimizer=opt, metrics=["accuracy"])
-
-#MULTICLASS
-model.compile(loss='categorical_crossentropy', optimizer=opt, metrics=["accuracy"])
-
-print(model.summary())
-
-metrics = Metrics_Approx()
-
-if len(X_train)<int(args.batch_size):
-	batch_size = len(X_train)
-else:
-	batch_size = int(args.batch_size)
-
-class_weight = args.class_weights
-
-history = model.fit(X_train, np.array(y_train), batch_size=batch_size, epochs=int(args.num_epochs), verbose=1, #class_weight={0:1, 1:10},
-					callbacks = [metrics],
-					validation_data=(X_test, np.array(y_test)))
+print("Begin cross validation")
+kf = KFold(n_splits=5, shuffle=True, random_state=args.seed)
+k = 0
 
 
-# Final evaluation of the model
-#scores = model.evaluate(X_test, y_test, verbose=0)
-#print("Accuracy: %.2f%%" % (scores[1]*100))
+for train_index, test_index in kf.split(X): 
+    k+=1
+    print("Starting K-",k)
+    #X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=args.seed)
+    X_train, X_test = X[train_index], X[test_index]
+    y_train, y_test = y[train_index], y[test_index]
+            
+    if args.max_train is not None:
+        max_train = int(args.max_train)
+        if max_train<len(X_train):
+            X_train = X_train[:max_train]
+            y_train = y_train[:max_train]
+        
+    print("Size of training set = ",len(X_train))
+
+    if len(X_train)<int(args.batch_size):
+        batch_size = len(X_train)
+    else:
+        batch_size = int(args.batch_size)
+        
+    print("Creating Model...")
+
+    if rand_embed:
+        print("Random embeddings")
+        embedding_matrix = None
+        word_vectors_dim = 400
+
+    dropout_rate = int(args.dropout_rate)
+    num_hidden = int(args.num_hidden)
+
+    input = Input(shape=(max_review_length,))
+    #Add the embedding layer	
+    model = Embedding(input_dim = num_words, output_dim = word_vectors_dim, input_length=max_review_length, weights = embedding_matrix, trainable=train_embed, mask_zero=True)(input)
+    #Add Additional hidden LSTM layers
+    #if num_hidden>1:
+    #	for x in range(1, num_hidden):
+            #model = Bidirectional(LSTM(int(args.hidden_dim), 
+                        #batch_input_shape=(32, None, 280), 
+             #           return_sequences = True, 
+              #          dropout =dropout_rate, activation=args.lstm_act))(model)
+              
+    if load_weights: 
+        filepath="temp/bidirectional_1_weights.npy"
+        print("Loading saved weights")
+        bidirectional_1_weights = np.load(filepath)
+    else:
+        bidirectional_1_weights = None
+              
+    #Add last hidden LSTM layer
+    model = Bidirectional(LSTM(int(args.hidden_dim), 
+                        weights = bidirectional_1_weights,
+                        #batch_input_shape=(32, None, 280), 
+                        return_sequences = True, 
+                        dropout =dropout_rate, activation=args.lstm_act))(model)
+                        
+    #Add final dense layer BINARY
+    #out = TimeDistributed(Dense(1, activation=args.dense_act, ))(model)
+    #Add final dense layer MULTICLASS
+    out = TimeDistributed(Dense(num_classes, activation=args.dense_act, ))(model)
+
+    model = Model(input,out)
+
+    #BINARY
+    #model.compile(loss='binary_crossentropy', optimizer=opt, metrics=["accuracy"])
+    #MULTICLASS
+    model.compile(loss='categorical_crossentropy', optimizer=opt, metrics=["accuracy"])
+
+    #print(model.summary())
+    
+    metrics = Metrics_Approx(tag_index=all_labels, k = k)
+
+    #filepath="temp/seq_tag_weights_best_k" + str(k)
+    #checkpoint = ModelCheckpoint(filepath, monitor='val_loss', verbose=1, save_best_only=True, mode='min')
+    #early_stop = EarlyStopping(monitor='val_loss', min_delta=0, patience=3, verbose=1, mode='min', baseline=None)
+
+    history = model.fit(X_train, np.array(y_train), batch_size=batch_size, epochs=int(args.num_epochs), verbose=1, #class_weight={0:1, 1:10},
+                        callbacks = [metrics],
+                        validation_data=(X_test, np.array(y_test)))
+
+
+    #model.load_weights(filepath)
+
+    y_pred = np.asarray(model.predict(X_test))
+    y_pred = np.argmax(y_pred, axis=-1)
+
+    targ = y_test
+    targ = np.argmax(targ, axis=-1) 
+
+    k_scores = evaluate_approx_match(y_pred, targ, all_labels)
+
+    print("Best Scores for K-{}: Precision = {}, Recall = {}, F1 = {}".format(str(k), k_scores["p"], k_scores["r"],  k_scores["f1"]))
+
+
 
 #all_words.append("None")
-if True:
+if show_samples:
     for i in range(10):
         #i = 1
         p = model.predict(np.array([X_test[i]]))
