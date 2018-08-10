@@ -85,6 +85,7 @@ def get_approx_match(auto_seqs, hand_seqs, adr_i, o_i,ind_i):
         a_subseqs_indic = [find_inds(a_cntr_indic,j) for j in range(1, max(a_cntr_indic)+1)]
         h_subseqs_adr = [find_inds(h_cntr_adr,j) for j in range(1, max(h_cntr_adr)+1)]
         h_subseqs_indic = [find_inds(h_cntr_indic,j) for j in range(1, max(h_cntr_indic)+1)]
+        
         matches_adr += sum([1 for a in a_subseqs_adr if sum([1 for h in h_subseqs_adr if approx_match(a,h)]) > 0])
         matches_indic += sum([1 for a in a_subseqs_indic if sum([1 for h in h_subseqs_indic if approx_match(a,h)]) > 0])
 
@@ -179,6 +180,11 @@ class Metrics_Approx(keras.callbacks.Callback):
         recall_e=recall_score(targ, predict, average=None)
         f1_e=f1_score(targ, predict, average=None)
         
+        #print(timestamp)
+        #print(epoch+1)
+        #print(precision_e)
+        #print(approx_scores)
+        
         with open(self.log_filename, 'a', encoding='UTF-8') as writer:
             writer.write(timestamp + "|" + str(epoch+1) + "|" + str(precision_e[adr_i]) + "|" + str(recall_e[adr_i]) + "|" + str(f1_e[adr_i]) + "|" + str(approx_scores["p"]) + "|" + str(approx_scores["r"]) + "|" + str(approx_scores["f1"]) + "\n")
             #writer.write(str(approx_scores["p"]) + "|" + str(approx_scores["r"]) + "|" + str(approx_scores["f1"]) + "\n")
@@ -231,6 +237,15 @@ class Metrics_Approx(keras.callbacks.Callback):
         
 class Metrics(keras.callbacks.Callback):
 
+    def __init__(self, tag_index = None, batch_size = 0, log_name=None, train_data=None):
+        super(keras.callbacks.Callback, self).__init__()
+        self.tag_index = tag_index
+        self.batch_size=batch_size
+        self.scores = {}
+        self.log_filename=log_name
+        self.training_data = train_data
+
+
     def on_epoch_end(self, epoch, logs={}):
     
         timestamp = str(datetime.datetime.now())
@@ -249,8 +264,20 @@ class Metrics(keras.callbacks.Callback):
         recall_e=recall_score(targ, predict, average="weighted")
         f1_e=f1_score(targ, predict, average="weighted")
         
+        val_scores = self.model.evaluate(self.validation_data[0],self.validation_data[1])
+        
+        #train_predict = np.asarray(self.model.predict(self.training_data[0]))
+        #train_predict = np.argmax(train_predict,axis=-1)
+        
+        #train_targ = self.training_data[1]
+        #train_targ = np.argmax(train_targ,axis=-1)
+        
+        train_scores = self.model.evaluate(self.training_data[0],self.training_data[1])
+        
+        
         with open(self.log_filename, 'a', encoding='UTF-8') as writer:
-            writer.write(timestamp + "|" + str(epoch) + "|" + str(precision_e) + "|" + str(recall_e) + "|" + str(f1_e) + "\n")
+            writer.write(timestamp + "|" + str(epoch) + "|" + str(precision_e) + "|" + str(recall_e) + "|" + str(f1_e)  
+            + "|" + str(val_scores[0]) + "|" + str(val_scores[1]) + "|" + str(train_scores[0]) + "|" + str(train_scores[1]) + "\n")
             #writer.write(str(approx_scores["p"]) + "|" + str(approx_scores["r"]) + "|" + str(approx_scores["f1"]) + "\n")
 
         #for x in range(len(precision_e)):
@@ -262,13 +289,18 @@ class Metrics(keras.callbacks.Callback):
         timestamp = str(datetime.datetime.now())
         timestamp_str = timestamp.replace(" ","").replace(":","").replace(".","").replace("-","")
         
-        filename = "logs/e_metrics_" + timestamp_str + ".txt"
         
-        self.log_filename = filename
+        if self.log_filename == None or self.log_filename == "run1":
+            filename = "logs/drugname_batchsize"+str(self.batch_size)+"_metrics_" + timestamp_str + ".txt"
+            self.log_filename = filename
+        else:
+            self.log_filename = "logs/"+self.log_filename+".txt"
+        
+        with open(self.log_filename, 'w', encoding='UTF-8') as writer:
+            writer.write("timestamp|epoch|prec_e|rec_e|f1_e|val_loss|val_acc|train_loss|train_acc\n")
         
         return
-        with open(self.log_filename, 'a', encoding='UTF-8') as writer:
-            writer.write("timestamp|epoch|prec_e|rec_e|f1_e\n")
+        
             
 def evaluate_approx_match(auto_seqs, hand_seqs, tag_index):
     for i in range(len(tag_index)):

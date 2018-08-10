@@ -33,6 +33,7 @@ from keras.callbacks import EarlyStopping
 from custom_metrics import evaluate_approx_match
 from sklearn.model_selection import KFold 
 import datetime
+import h5py
 
 argparser = ArgumentParser()
 
@@ -77,12 +78,10 @@ argparser.add_argument("--log_name", dest="log_name", default=CONFIG['log_name']
 argparser.add_argument("--load_weights", dest="load_weights", default=CONFIG['load_weights'],
                          help="Determines wether to load pre-saved weights")  
 argparser.add_argument("--show_samples", dest="show_samples", default=CONFIG['show_samples'],
-                         help="Determines wether to show examples model predictions")       
+                         help="Determines wether to show examples model predictions")    
 argparser.add_argument("--weights_filepath", dest="weights_filepath", default=CONFIG['weights_filepath'],
-                         help="Determines wether to show examples model predictions")                         
+                         help="Determines wether to show examples model predictions")                           
 
-                         
-                         
 args = argparser.parse_args()
 
 args.log_name = "logs/kfold/"+args.log_name+".txt"
@@ -141,6 +140,9 @@ all_words.insert(0,"~pad~")
 
 all_labels.append("<PAD>")
 tag_index = {t: i for i, t in enumerate(all_labels)}
+
+print(all_labels)
+
 
 top_words = args.top_words
 num_words = len(word_index)
@@ -214,8 +216,6 @@ for train_index, test_index in kf.split(X):
             X_train = X_train[:max_train]
             y_train = y_train[:max_train]
             
-            X_test = X_test[:66]
-            y_test = y_test[:66]
         
     print("Size of training set = ",len(X_train))
 
@@ -236,7 +236,8 @@ for train_index, test_index in kf.split(X):
 
     input = Input(shape=(max_review_length,), name="input_layer")
     #Add the embedding layer	
-    model = Embedding(input_dim = num_words, output_dim = word_vectors_dim, input_length=max_review_length, weights = embedding_matrix, trainable=train_embed, mask_zero=True, name="embedding_layer")(input)
+    model = Embedding(input_dim = num_words, output_dim = word_vectors_dim, input_length=max_review_length, weights = embedding_matrix, 
+                        trainable=train_embed, mask_zero=True, name='embedding_layer_2')(input)
     
     #Add Additional hidden LSTM layers
     #if num_hidden>1:
@@ -245,35 +246,34 @@ for train_index, test_index in kf.split(X):
              #           return_sequences = True, 
               #          dropout =dropout_rate, activation=args.lstm_act))(model)
               
-              
     #Add last hidden LSTM layer
     model = Bidirectional(LSTM(int(args.hidden_dim), 
+                        
                         return_sequences = True, 
-                        dropout =dropout_rate, activation=args.lstm_act), name="lstm_layer")(model)
+                        dropout =dropout_rate, activation=args.lstm_act), name='lstm_layer')(model)
                         
 
     #Add final dense layer MULTICLASS
-    out = TimeDistributed(Dense(num_classes, activation=args.dense_act ), name="dense_layer")(model)
+    out = TimeDistributed(Dense(num_classes, activation=args.dense_act ), name='dense_layer')(model)
 
     model = Model(input,out)
-    
-    if load_weights:
-        #weights_filepath="temp/transfer_learning_weights_ds"
-        print("Loading Weights")
-        model.load_weights(args.weights_filepath, by_name=True) 
 
+    #weights_filepath="temp/seq_tag_weights_best_k2"
+    print("Restoring best weights")
+    model.load_weights(args.weights_filepath, by_name=True)  
+
+    
     #MULTICLASS
     model.compile(loss='categorical_crossentropy', optimizer=opt, metrics=["accuracy"])
 
     #print(model.summary())
     
-    metrics = Metrics_Approx(tag_index=all_labels, k = k)
+    #metrics = Metrics_Approx(tag_index=all_labels, k = k)
 
+    #history = model.fit(X_train, np.array(y_train), batch_size=batch_size, epochs=int(args.num_epochs), verbose=1, #class_weight={0:1, 1:10},
+    #                    callbacks = [metrics],
+    #                    validation_data=(X_test, np.array(y_test)))
 
-    history = model.fit(X_train, np.array(y_train), batch_size=batch_size, epochs=int(args.num_epochs), verbose=1,
-                        callbacks = [metrics],
-                        validation_data=(X_test, np.array(y_test)))
-    
     y_pred = np.asarray(model.predict(X_test))
     y_pred = np.argmax(y_pred, axis=-1)
 
@@ -304,6 +304,4 @@ if show_samples:
                     writer.write("{:25} {:6}:{}\n".format(all_words[w], all_labels[l], all_labels[pred]))
             writer.write("---------------------------------------\n")
             writer.write("---------------------------------------\n")
-            writer.write("---------------------------------------\n")
-
-        
+            writer.write("---------------------------------------\n")      

@@ -78,15 +78,9 @@ argparser.add_argument("--show_samples", dest="show_samples", default=CONFIG['sh
 args = argparser.parse_args()
 
 show_samples = int(args.show_samples)!=0
-print("show_samples", show_samples)
-
 rand_embed = int(args.rand_embed)!=0
-print("rand_embed", rand_embed)
-
 train_embed = int(args.train_embed)!=0
-print("train_embed", train_embed)
-
-data = pd.read_csv("data/tweets_final_fixed_single_drug.csv", sep="|", encoding="utf-8")
+data = pd.read_csv("data/unlabelled/ds_final_fixed_single_drug.csv", sep="|", encoding="utf-8")
 
 norm_text_lit = []
 labels_lit = []
@@ -124,7 +118,7 @@ all_words.insert(0,"~pad~")
 tag_index = {t: i for i, t in enumerate(all_labels)}
 #pickle.dump(all_labels, open("tag_index", 'wb'))
 
-print(tag_index)
+#print(tag_index)
 
 top_words = args.top_words
 num_words = len(word_index)
@@ -193,7 +187,7 @@ else:
 	opt = "adam"
 	
 print("Creating Model...")
-input = Input(shape=(max_review_length,))
+input = Input(shape=(max_review_length,), name="input_drug_pred")
 
 if rand_embed:
     print("Random embeddings")
@@ -201,26 +195,27 @@ if rand_embed:
     word_vectors_dim = 400
 
 #Add the embedding layer	
-model = Embedding(input_dim = num_words, output_dim = word_vectors_dim, input_length=max_review_length, weights = embedding_matrix, trainable=train_embed, mask_zero=True)(input)
+model = Embedding(input_dim = num_words, output_dim = word_vectors_dim, input_length=max_review_length, weights = embedding_matrix, trainable=train_embed, mask_zero=True, name="embedding_drug_pred")(input)
 
 #model = Masking(mask_value=0.0)(model)
 
-dropout_rate = int(args.dropout_rate)
+dropout_rate = float(args.dropout_rate)
+print(dropout_rate)
 num_hidden = int(args.num_hidden)
 
 #Add Additional hidden LSTM layers
-if num_hidden>1:
-	for x in range(1, num_hidden):
-		model = Bidirectional(LSTM(int(args.hidden_dim), 
-                    #batch_input_shape=(32, None, 280), 
-                    return_sequences = True, 
-                    dropout =dropout_rate, activation=args.lstm_act))(model)
+#if num_hidden>1:
+	#for x in range(1, num_hidden):
+	#	model = Bidirectional(LSTM(int(args.hidden_dim), 
+    #                #batch_input_shape=(32, None, 280), 
+    #                return_sequences = True, 
+    #                dropout =dropout_rate, activation=args.lstm_act))(model)
 
 #Add last hidden LSTM layer
 model = Bidirectional(LSTM(int(args.hidden_dim), 
                     #batch_input_shape=(32, None, 280), 
                     #return_sequences = True, 
-                    dropout =dropout_rate, activation=args.lstm_act))(model)
+                    dropout =dropout_rate, activation=args.lstm_act), name="lstm_layer")(model)
 
 """                   
 #Add Additional hidden LSTM layers
@@ -237,7 +232,7 @@ model = Bidirectional(CuDNNLSTM(int(args.hidden_dim),
 """
 
 #Add final dense layer MULTICLASS
-out = Dense(num_classes, activation=args.dense_act, )(model)
+out = Dense(num_classes, activation=args.dense_act, name="dense_drug_pred")(model)
 
 model = Model(input,out)
 
@@ -246,7 +241,7 @@ model.compile(loss='categorical_crossentropy', optimizer=opt, metrics=["accuracy
 
 print(model.summary())
 
-metrics = Metrics()
+
 
 if len(X_train)<int(args.batch_size):
 	batch_size = len(X_train)
@@ -255,20 +250,22 @@ else:
 
 class_weight = args.class_weights
 
+metrics = Metrics(tag_index=all_labels, batch_size=batch_size, log_name = args.log_name, train_data=(X_train,y_train))
 
-filepath="temp/weights.best.hdf5"
+
+filepath="temp/transfer_learning_weights_ds"
 checkpoint = ModelCheckpoint(filepath, monitor='val_loss', verbose=1, save_best_only=True, mode='min')
-early_stop = EarlyStopping(monitor='val_loss', min_delta=0, patience=10, verbose=1, mode='min', baseline=None)
+early_stop = EarlyStopping(monitor='val_loss', min_delta=0, patience=3, verbose=1, mode='min', baseline=None)
 
 
 history = model.fit(X_train, np.array(y_train), batch_size=batch_size, epochs=int(args.num_epochs), verbose=1, #class_weight={0:1, 1:10},
-					callbacks = [metrics,checkpoint, early_stop],
+					callbacks = [metrics,checkpoint],
 					validation_data=(X_test, np.array(y_test)))
                     
-model.load_weights(filepath)            
+#model.load_weights(filepath)            
 
-filepath="temp/bidirectional_1_weights"
-np.save(filepath,model.get_layer("bidirectional_1").get_weights())
+#filepath="temp/bidirectional_1_weights_batch"+str(batch_size)
+#np.save(filepath,model.get_layer("bidirectional_1").get_weights())
 
 if show_samples:
     print("{:50} ({:6}): {}".format("Sentence", "True", "Pred"))

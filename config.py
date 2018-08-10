@@ -5,7 +5,7 @@ CONFIG = {
 "word2vecpath" : "C:/Users/np278/w2v_embeddings/word2vec_twitter_model.bin",
 #"word2vecpath" : "C:/Users/np278/w2v_embeddings/GoogleNews-vectors-negative300.bin",
 "num_hidden" : 1,
-"hidden_dim" : 500,
+"hidden_dim" : 256,
 "lstm_act": "tanh",
 "dense_act": "softmax",
 "optimizer": "adam",
@@ -15,10 +15,11 @@ CONFIG = {
 "rand_embed" : 0,
 "max_train" : None,
 "seed" : None,
-"num_epochs":1,
-"batch_size":1,
+"num_epochs":6,
+"batch_size":4,
 "log_name" : "run1",
-"dropout_rate" : 0.1,
+"dropout_rate" : 0.5,
 "load_weights" : 0,
-"show_samples" : 0
+"show_samples" : 0,
+"weights_filepath" : "temp/default_weights"
 }
