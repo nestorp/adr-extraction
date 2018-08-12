@@ -71,16 +71,19 @@ argparser.add_argument("--batch_size", dest="batch_size", default=CONFIG['batch_
 argparser.add_argument("--log_name", dest="log_name", default=CONFIG['log_name'],
                          help="Directory name for tensorboard logs")	
 argparser.add_argument("--load_weights", dest="load_weights", default=CONFIG['load_weights'],
-                         help="Determines wether to load pre-saved weights")  
+                         help="Determines whether to load pre-saved weights")  
 argparser.add_argument("--show_samples", dest="show_samples", default=CONFIG['show_samples'],
-                         help="Determines wether to show examples model predictions")       
+                         help="Determines whether to show examples model predictions")       
 argparser.add_argument("--weights_filepath", dest="weights_filepath", default=CONFIG['weights_filepath'],
-                         help="Determines wether to show examples model predictions")                                                 
+                         help="Determines whether to show examples model predictions")    
+argparser.add_argument("--trans_learn", dest="trans_learn", default=CONFIG['trans_learn'],
+                         help="Determines whether to perform transfer learning")                           
                         
 args = argparser.parse_args()
 
 args.log_name = "logs/"+args.log_name+".txt"
 args.datafile = "data/"+args.datafile
+args.weights_filepath = "temp/"+args.weights_filepath
 
 print("Data file name: ",args.datafile)
 
@@ -88,6 +91,7 @@ rand_embed = int(args.rand_embed)!=0
 train_embed = int(args.train_embed)!=0
 load_weights = int(args.load_weights)!=0
 show_samples = int(args.show_samples)!=0
+trans_learn = int(args.trans_learn)!=0
 
 #Reading data file
 data = pd.read_csv(args.datafile, sep="|", encoding="utf-8")
@@ -191,7 +195,7 @@ else:
     embedding_matrix = None
     word_vectors_dim = 400
 
-#Get configuredo optimiser
+#Get configured optimiser
 opt = args.optimizer.lower()
 
 
@@ -258,7 +262,7 @@ for train_index, test_index in kf.split(X):
     model = Model(input,out)
     
     #Used for loading pre-saved model weights
-    if load_weights:
+    if load_weights or trans_learn:
         print("Loading Weights")
         model.load_weights(args.weights_filepath, by_name=True) 
 
@@ -272,9 +276,10 @@ for train_index, test_index in kf.split(X):
     metrics = Metrics_Approx(tag_index=all_labels, k = k)
 
     #Train model 
-    history = model.fit(X_train, np.array(y_train), batch_size=batch_size, epochs=int(args.num_epochs), verbose=1,
-                        callbacks = [metrics],
-                        validation_data=(X_test, np.array(y_test)))
+    if not trans_learn:
+        history = model.fit(X_train, np.array(y_train), batch_size=batch_size, epochs=int(args.num_epochs), verbose=1,
+                            callbacks = [metrics],
+                            validation_data=(X_test, np.array(y_test)))
     
     #Perform prediction to calculate scores for K iteration
     y_pred = np.asarray(model.predict(X_test))

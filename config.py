@@ -1,3 +1,12 @@
+######
+# Config.py
+# 
+# Author: Nestor Prieto Chavana
+# Date: 10/8/2018
+#
+# Contains default settings for script parameters 
+#
+###
 CONFIG = {
 "datafile" : "full_tweets_adronly.csv",
 "sentence_len" : 280,
@@ -21,5 +30,6 @@ CONFIG = {
 "dropout_rate" : 0.5,
 "load_weights" : 0,
 "show_samples" : 0,
+"trans_learn" : 0,
 "weights_filepath" : "temp/default_weights"
 }

@@ -1,30 +1,34 @@
-from keras import backend as K
+######
+# Custom_metrics.py
+# 
+# Author: Nestor Prieto Chavana
+# Date: 10/8/2018
+#
+# This script performs approximate matching calculations for model metrics
+# and logs results 
+#
+###
 import keras
 import numpy as np
 from sklearn.metrics import f1_score
 from sklearn.metrics import precision_score
 from sklearn.metrics import recall_score
-import pickle   
 import datetime
 
 def get_approx_match(auto_seqs, hand_seqs, adr_i, o_i,ind_i):
-    ''' Calculate approximate match from results file, written with format:
-    word <actualLabel> <predictedLabel>
-
-    Sentences should be demarcated by 'BOS' and 'EOS' lines.
-    Labels can be one of 'O', 'B-ADR', 'I-ADR', 'B-Indication', 'I-Indication'
-
-    :param filename: Name of file with results
-    :return:
+    ''' Calculate approximate matching scores from predictions
+    This function was adapted from the code published in 
+    [Cocos, A., Fiks, A.G. and Masino, A.J., 2017. 
+    Deep learning for pharmacovigilance: recurrent neural network 
+    architectures for labeling adverse drug reactions in Twitter posts. 
+    Journal of the American Medical Informatics Association] 
+    under the GPL-3.0 license
     '''
     def find_inds(lst, item):
         return [i for i, x in enumerate(lst) if x == item]
 
     def approx_match(l1,l2):
         return len([l for l in l1 if l in l2]) > 0
-
-    #auto_seqs = pr
-    #hand_seqs = ta
 
     # count tags and matches
     auto_tags_adr = 0
@@ -36,9 +40,7 @@ def get_approx_match(auto_seqs, hand_seqs, adr_i, o_i,ind_i):
     matches_adr = 0
     matches_indic = 0
     for a_seq,h_seq in zip(auto_seqs, hand_seqs):
-        
-        #print(a_seq,h_seq)
-        
+               
         a_cntr_adr = [0] * len(a_seq)
         a_cntr_indic = [0] * len(a_seq)
         h_cntr_adr = [0] * len(h_seq)
@@ -49,20 +51,20 @@ def get_approx_match(auto_seqs, hand_seqs, adr_i, o_i,ind_i):
         h_mask_indic = [0] * len(h_seq)
         for i in range(1, len(a_seq)):
 
-            if (a_seq[i-1] == o_i and adr_i == a_seq[i]):# or a_seq[i] == 'B-ADR':
+            if (a_seq[i-1] == o_i and adr_i == a_seq[i]):
                 a_cntr_adr[i] = a_cntr_adr[i-1] + 1
             else:
                 a_cntr_adr[i] = a_cntr_adr[i-1]
-            if (a_seq[i-1] == o_i and ind_i == a_seq[i]):# or a_seq[i] == 'B-Indication':
+            if (a_seq[i-1] == o_i and ind_i == a_seq[i]):
                 a_cntr_indic[i] = a_cntr_indic[i-1] + 1
             else:
                 a_cntr_indic[i] = a_cntr_indic[i-1]
 
-            if (h_seq[i-1] == o_i and adr_i == h_seq[i]):# or h_seq[i] == 'B-ADR':
+            if (h_seq[i-1] == o_i and adr_i == h_seq[i]):
                 h_cntr_adr[i] = h_cntr_adr[i-1] + 1
             else:
                 h_cntr_adr[i] = h_cntr_adr[i-1]
-            if (h_seq[i-1] == o_i and ind_i == h_seq[i]):# or h_seq[i] == 'B-Indication':
+            if (h_seq[i-1] == o_i and ind_i == h_seq[i]):
                 h_cntr_indic[i] = h_cntr_indic[i-1] + 1
             else:
                 h_cntr_indic[i] = h_cntr_indic[i-1]
@@ -131,7 +133,11 @@ def get_approx_match(auto_seqs, hand_seqs, adr_i, o_i,ind_i):
     return {'p':precision_adr, 'r':recall_adr, 'f1':f1score_adr}
     
 class Metrics_Approx(keras.callbacks.Callback):
-
+    ''' Performs custom logging functions, approximate matching and 
+    exact matching scores for each iteration of the model. It keeps track
+    of model performance and saves a checkpoint every time there is improvement.
+    Additionally, it provides early stopping functionality.
+    '''
     def __init__(self, tag_index = None, k = 0):
         super(keras.callbacks.Callback, self).__init__()
         self.tag_index = tag_index
@@ -141,21 +147,24 @@ class Metrics_Approx(keras.callbacks.Callback):
         self.no_improv_epoch = 0
         self.tol = 2
     
+    #Intreface for the get_approx_match function
     def get_approx_match_wrapper(self, auto_seqs, hand_seqs, adr_i, o_i,ind_i):
         return get_approx_match(auto_seqs, hand_seqs, adr_i, o_i,ind_i)
         
+    #Save weights model weights to file
     def save_model_weights(self):
         self.model.save_weights(self.weights_filepath)
     
    
+    #At end of each epoch, log scores and save weights if an improvement 
+    #was produced
     def on_epoch_end(self, epoch, logs={}):
         
         self.weights_filepath="temp/seq_tag_weights_best_k" + str(self.k)
         
         timestamp = str(datetime.datetime.now())
-        timestamp_str = timestamp.replace(" ","").replace(":","").replace(".","").replace("-","")
 
-        tag_index = self.tag_index#pickle.load(open("temp/tag_index", 'rb'))
+        tag_index = self.tag_index
         
         for i in range(len(tag_index)):
             if tag_index[i]=="I-ADR":
@@ -180,18 +189,16 @@ class Metrics_Approx(keras.callbacks.Callback):
         recall_e=recall_score(targ, predict, average=None)
         f1_e=f1_score(targ, predict, average=None)
         
-        #print(timestamp)
-        #print(epoch+1)
-        #print(precision_e)
-        #print(approx_scores)
-        
+        #Save epoch scores
         with open(self.log_filename, 'a', encoding='UTF-8') as writer:
             writer.write(timestamp + "|" + str(epoch+1) + "|" + str(precision_e[adr_i]) + "|" + str(recall_e[adr_i]) + "|" + str(f1_e[adr_i]) + "|" + str(approx_scores["p"]) + "|" + str(approx_scores["r"]) + "|" + str(approx_scores["f1"]) + "\n")
-            #writer.write(str(approx_scores["p"]) + "|" + str(approx_scores["r"]) + "|" + str(approx_scores["f1"]) + "\n")
         
         print("Exact Match Scores Class ADR: Precision = {}, Recall = {}, F1 = {}".format(precision_e[adr_i], recall_e[adr_i],  f1_e[adr_i]))
         print("Approximate Matching Scores Class ADR: Precision = {}, Recall = {}, F1 = {}".format(approx_scores["p"], approx_scores["r"],  approx_scores["f1"]))
         
+        #Determine if improvement has been produced, and if so save current 
+        #weights. If no improvement has been found after a number of 
+        #iterations > tol, stop training
         self.scores[epoch] = approx_scores
         if epoch==0:
             print("Epoch {}: F1 improved from inf to {}, saving model to {}".format(epoch+1, self.scores[epoch]["f1"], self.weights_filepath))
@@ -215,6 +222,7 @@ class Metrics_Approx(keras.callbacks.Callback):
         
         return
         
+    #Create log file and print header
     def on_train_begin(self, logs={}):
         timestamp = str(datetime.datetime.now())
         timestamp_str = timestamp.replace(" ","").replace(":","").replace(".","").replace("-","")
@@ -228,6 +236,7 @@ class Metrics_Approx(keras.callbacks.Callback):
         
         return
         
+    #Restore best performing weights on model
     def on_train_end(self, logs={}):
         print("Restoring best weights")
         self.model.load_weights(self.weights_filepath)        
@@ -236,7 +245,9 @@ class Metrics_Approx(keras.callbacks.Callback):
        
         
 class Metrics(keras.callbacks.Callback):
-
+    ''' Performs custom logging functions using exact matching scores for each 
+    iteration of the model.
+    '''
     def __init__(self, tag_index = None, batch_size = 0, log_name=None, train_data=None):
         super(keras.callbacks.Callback, self).__init__()
         self.tag_index = tag_index
@@ -246,31 +257,23 @@ class Metrics(keras.callbacks.Callback):
         self.training_data = train_data
 
 
+    #At end of each epoch, log exact matching scores
     def on_epoch_end(self, epoch, logs={}):
     
         timestamp = str(datetime.datetime.now())
-        timestamp_str = timestamp.replace(" ","").replace(":","").replace(".","").replace("-","")
            
         predict = np.asarray(self.model.predict(self.validation_data[0]))
         predict = np.argmax(predict, axis=-1)
 
         targ = self.validation_data[1]
         targ = np.argmax(targ, axis=-1)      
-        
-        #predict = np.concatenate(predict)
-        #targ = np.concatenate(targ)
 
         precision_e=precision_score(targ, predict, average="weighted")
         recall_e=recall_score(targ, predict, average="weighted")
         f1_e=f1_score(targ, predict, average="weighted")
         
         val_scores = self.model.evaluate(self.validation_data[0],self.validation_data[1])
-        
-        #train_predict = np.asarray(self.model.predict(self.training_data[0]))
-        #train_predict = np.argmax(train_predict,axis=-1)
-        
-        #train_targ = self.training_data[1]
-        #train_targ = np.argmax(train_targ,axis=-1)
+
         
         train_scores = self.model.evaluate(self.training_data[0],self.training_data[1])
         
@@ -278,13 +281,11 @@ class Metrics(keras.callbacks.Callback):
         with open(self.log_filename, 'a', encoding='UTF-8') as writer:
             writer.write(timestamp + "|" + str(epoch) + "|" + str(precision_e) + "|" + str(recall_e) + "|" + str(f1_e)  
             + "|" + str(val_scores[0]) + "|" + str(val_scores[1]) + "|" + str(train_scores[0]) + "|" + str(train_scores[1]) + "\n")
-            #writer.write(str(approx_scores["p"]) + "|" + str(approx_scores["r"]) + "|" + str(approx_scores["f1"]) + "\n")
 
-        #for x in range(len(precision_e)):
-            #print("Exact Match Scores Class {}: Precision = {}, Recall = {}, F1 = {}".format(x, precision_e[x], recall_e[x],  f1_e[x]))
         print("Exact Match Scores Class: Precision = {}, Recall = {}, F1 = {}".format(precision_e, recall_e,  f1_e))
         return
         
+    #Create log file at the start of training
     def on_train_begin(self, logs={}):
         timestamp = str(datetime.datetime.now())
         timestamp_str = timestamp.replace(" ","").replace(":","").replace(".","").replace("-","")
@@ -301,7 +302,8 @@ class Metrics(keras.callbacks.Callback):
         
         return
         
-            
+     
+#Interface to directly execute function get_approx_matching
 def evaluate_approx_match(auto_seqs, hand_seqs, tag_index):
     for i in range(len(tag_index)):
         if tag_index[i]=="I-ADR":
