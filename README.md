@@ -2,10 +2,11 @@
 Author: Nestor Prieto Chavana
 
 This repo contains the code used for my MSc research project:
-Extraction of Adverse Drug Reaction Reports from Social Media: A Deep Learning Approach
+> Extraction of Adverse Drug Reaction Reports from Social Media: A Deep Learning Approach
 
 Since it is against Twitter terms of service to publish tweet text, the data has not been shared.
-TODO: share the tweet IDs and add a script to download text.
+
+TODO: share tweet IDs and publish script to automate download.
 
 #### Files & Directories
 
@@ -23,11 +24,11 @@ Content | Description
 `custom_tb_log.py/` | Custom tensorboard logging. Unused in latest version.
 `learning_curves.py/` | Generates learning plots for model. Unused in latest version.
 
-As pat of this research I supplemented the ASU and CHOP twitter datasets published in: 
+As part of this research I supplemented the ASU and CHOP twitter datasets published in: 
 
 > Cocos, A., Fiks, A.G. and Masino, A.J., 2017. Deep learning for pharmacovigilance: recurrent neural network architectures for labeling adverse drug reactions in Twitter posts. Journal of the American Medical Informatics Association, 24(4), pp.813-821.
 
-&
+and
 
 > Sarker A, Gonzalez G; Portable Automatic Text Classification for Adverse Drug Reaction Detection via Multi-corpus Training, Journal of Biomedical Informatics, 2015 Feb;53:196-207. doi: 10.1016/j.jbi.2014.11.002. Epub 2014 Nov 8. (resources for feature extraction for this task can be found at: 
 
