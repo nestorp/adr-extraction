@@ -12,7 +12,7 @@ TODO: share tweet IDs and publish script to automate download.
 
 File Name | Description 
 --- | --- 
-sequence_tagging.py/ | Main model file. Loads text files containing post text and outputs label predictions for each token
+`sequence_tagging.py/` | Main model file. Loads text files containing post text and outputs label predictions for each token
 `custom_metrics.py/` | Calculates approximate matching scores and performs custom logging, checkpoints and early stopping.
 `drug_name_pred.py/` | Modified version of model to predict drug mentions from context. Used for transfer learning.
 `sequence_tagging_predict_only.py/` | Modified version of sequence_tagging.py changed to only perform prediction.
